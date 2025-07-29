@@ -2,7 +2,8 @@
 node_modules/
 
 # Environment variables
-.env
+*.env
 
 # OS-specific files
 .DS_Store
+
