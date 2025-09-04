@@ -53,6 +53,11 @@ def get_player_of_the_day():
             "height_cm", "picture_url", "team_name", "jersey_number", "sex"]
     return dict(zip(keys, player))
 
+
+@app.route("/")
+def home():
+    return "Volleydle API is running"
+
 @app.route("/api/player-of-the-day", methods=["GET"])
 def player_of_the_day():
     player = get_player_of_the_day()
