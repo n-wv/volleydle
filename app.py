@@ -6,19 +6,19 @@ import random
 from dotenv import load_dotenv
 import os
 
-
-# Flask app
 app = Flask(__name__)
 
 def get_db_connection():
-    load_dotenv(dotenv_path="cred.env")
+    if os.path.exists("cred.env"):
+        load_dotenv("cred.env")
 
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
         database=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
-        port=os.getenv("DB_PORT")
+        port=os.getenv("DB_PORT"),
+        sslmode=os.getenv("SSLMODE", "require")
     )
     return conn
 
