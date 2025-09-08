@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import psycopg2
 import hashlib
 import datetime
@@ -82,6 +82,49 @@ def all_players():
     players = [dict(zip(keys, row)) for row in rows]
 
     return jsonify(players)
+
+@app.route("/api/guess", methods=["GET"])
+def guess_player():
+    name = request.args.get("name")
+    if not name:
+        return jsonify({"error": "No name provided"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, name, nationality, position, birthdate, age, height_cm, picture_url, team_name, jersey_number, sex
+        FROM players
+        WHERE LOWER(name) = LOWER(%s);
+    """, (name,))
+    guess = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not guess:
+        return jsonify({"error": "Player not found"}), 404
+
+    keys = ["id", "name", "nationality", "position", "birthdate", "age",
+            "height_cm", "picture_url", "team_name", "jersey_number", "sex"]
+    guess_dict = dict(zip(keys, guess))
+
+    # get target player
+    target = get_player_of_the_day()
+
+    # compare attributes
+    feedback = {
+        "name": guess_dict["name"],
+        "nationality": guess_dict["nationality"] == target["nationality"],
+        "position": guess_dict["position"] == target["position"],
+        "age": "higher" if guess_dict["age"] < target["age"] else "lower" if guess_dict["age"] > target["age"] else "match",
+        "height": "taller" if guess_dict["height_cm"] < target["height_cm"] else "shorter" if guess_dict["height_cm"] > target["height_cm"] else "match",
+        "team": guess_dict["team_name"] == target["team_name"],
+        "sex": guess_dict["sex"] == target["sex"]
+    }
+
+    return jsonify({
+        "guess": guess_dict,
+        "feedback": feedback
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
