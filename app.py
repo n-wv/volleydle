@@ -174,6 +174,7 @@ def guess_player():
             "height_cm", "picture_url", "team_name", "jersey_number", "sex"]
     guess_dict = dict(zip(keys, guess))
     guess_dict["continent"] = get_continent(guess_dict["nationality"])
+    guess_dict["flag"] = COUNTRY_TO_FLAG.get(guess_dict["nationality"], "")
 
     # get target player
     target = get_player_of_the_day()
