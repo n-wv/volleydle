@@ -9,6 +9,9 @@ function App() {
   const [allPlayers, setAllPlayers] = useState([]);
   const [filteredPlayers, setFilteredPlayers] = useState([]);
 
+  const [gameWon, setGameWon] = useState(false);
+  const [winningPlayer, setWinningPlayer] = useState(null);
+
   useEffect(() => {
   fetch("https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/players")
     .then(res => res.json())
@@ -19,6 +22,7 @@ function App() {
   // Handle user guess submission
   const handleGuess = () => {
     if (!guess) return;
+    if (gameWon) return;
 
     fetch(
       `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/guess?name=${encodeURIComponent(guess)}`
@@ -42,6 +46,11 @@ function App() {
         // Clear UI
         setFilteredPlayers([]);
         setGuess("");
+
+        if (data.is_correct) {
+          setGameWon(true);
+          setWinningPlayer(data.guess);
+        }
       });
   };
 
@@ -70,13 +79,13 @@ function App() {
   };
 
   const renderArrow = (feedback) => {
-    if (feedback === "match") return "✓";
+    if (feedback === "match") return "";
 
-    if (feedback === "higher") return "↑";
-    if (feedback === "lower") return "↓";
+    if (feedback === "higher") return "↓";
+    if (feedback === "lower") return "↑";
 
-    if (feedback === "higher_far") return "↑↑";
-    if (feedback === "lower_far") return "↓↓";
+    if (feedback === "higher_far") return "↓↓";
+    if (feedback === "lower_far") return "↑↑";
 
     return "";
   };
@@ -167,7 +176,6 @@ function App() {
             <th>Position</th>
             <th>Age</th>
             <th>Height</th>
-            <th>Team</th>
             <th>Jersey</th>
             <th>Continent</th>
             <th>Sex</th>
@@ -201,9 +209,6 @@ function App() {
               <td style={{ backgroundColor: getArrowColor(g.feedback.height) }}>
                 {g.guess.height_cm} cm {renderArrow(g.feedback.height)}
               </td>
-              <td style={{ backgroundColor: g.feedback.team ? "lightgreen" : "lightcoral" }}>
-                {g.guess.team_name}
-              </td>
               <td style={{ backgroundColor: getArrowColor(g.feedback.jersey_number) }}>
                 #{g.guess.jersey_number} {renderArrow(g.feedback.jersey_number)}
               </td>
@@ -217,6 +222,49 @@ function App() {
           ))}
         </tbody>
       </table>
+
+      {gameWon && winningPlayer && (
+        <div style={{
+          marginTop: "30px",
+          padding: "20px",
+          border: "2px solid #4caf50",
+          borderRadius: "12px",
+          display: "flex",
+          alignItems: "center",
+          gap: "20px",
+          backgroundColor: "#e8f5e9"
+        }}>
+          <img
+            src={winningPlayer.picture_url}
+            alt={winningPlayer.name}
+            style={{
+              width: "120px",
+              height: "120px",
+              borderRadius: "50%",
+              objectFit: "cover"
+            }}
+          />
+
+          <div>
+            <h2 style={{ margin: 0 }}>
+              🎉 You got it!
+            </h2>
+            <h3 style={{ margin: "5px 0" }}>
+              {winningPlayer.flag} {winningPlayer.name}
+            </h3>
+            <p style={{ margin: 0 }}>
+              {winningPlayer.nationality} • {winningPlayer.position}
+            </p>
+            <p style={{ margin: 0 }}>
+              Team: {winningPlayer.team_name}
+            </p>
+            <p style={{ margin: 0 }}>
+              Jersey #{winningPlayer.jersey_number}
+            </p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -200,9 +200,12 @@ def guess_player():
         )
     }
 
+    is_correct = guess_dict["id"] == target["id"]
+
     return jsonify({
         "guess": guess_dict,
-        "feedback": feedback
+        "feedback": feedback,
+        "is_correct": is_correct
     })
 
 if __name__ == "__main__":
