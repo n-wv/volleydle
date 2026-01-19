@@ -8,20 +8,47 @@ from dotenv import load_dotenv
 import os
 
 COUNTRY_TO_CONTINENT = {
-    "Japan": "Asia",
-    "China": "Asia",
-    "Iran": "Asia",
-    "France": "Europe",
-    "Italy": "Europe",
-    "Poland": "Europe",
-    "United States": "North America",
-    "Canada": "North America",
-    "Brazil": "South America",
     "Argentina": "South America",
+    "Brazil": "South America",
+
+    "Canada": "North America",
+    "United States": "North America",
+    "Dominican Republic": "North America",
+
+    "China": "Asia",
+    "Japan": "Asia",
+    
+    "Türkiye": "Europe",
+    "France": "Europe",
+    "Germany": "Europe",
+    "Italy": "Europe",
+    "Netherlands": "Europe",
+    "Poland": "Europe",
+    "Serbia": "Europe",
+    "Slovenia": "Europe",
+
     "Egypt": "Africa",
-    "Tunisia": "Africa",
-    "Australia": "Oceania",
-    # add Olympic countries only (small list)
+    "Kenya": "Africa"
+}
+
+COUNTRY_TO_FLAG = {
+    "Argentina": "🇦🇷",
+    "Brazil": "🇧🇷",
+    "Canada": "🇨🇦",
+    "China": "🇨🇳",
+    "Dominican Republic": "🇩🇴",
+    "Egypt": "🇪🇬",
+    "France": "🇫🇷",
+    "Germany": "🇩🇪",
+    "Italy": "🇮🇹",
+    "Japan": "🇯🇵",
+    "Kenya": "🇰🇪",
+    "Netherlands": "🇳🇱",
+    "Poland": "🇵🇱",
+    "Serbia": "🇷🇸",
+    "Slovenia": "🇸🇮",
+    "Türkiye": "🇹🇷",
+    "United States": "🇺🇸"
 }
 
 
@@ -75,8 +102,20 @@ def get_player_of_the_day():
     player_dict["continent"] = get_continent(player_dict["nationality"])
     return player_dict
 
+def compare_numeric(guess, target, close_threshold):
+    diff = guess - target
+    if diff == 0:
+        return "match"
+    if abs(diff) <= close_threshold:
+        return "higher" if guess > target else "lower"
+    
+    return "higher_far" if guess > target else "lower_far"
+
 def get_continent(nationality):
     return COUNTRY_TO_CONTINENT.get(nationality, "Unknown")
+
+def get_flag(country):
+    return COUNTRY_TO_FLAG.get(country, "")
 
 @app.route("/")
 def home():
@@ -144,12 +183,21 @@ def guess_player():
         "name": guess_dict["name"],
         "nationality": guess_dict["nationality"] == target["nationality"],
         "position": guess_dict["position"] == target["position"],
-        "age": "higher" if guess_dict["age"] < target["age"] else "lower" if guess_dict["age"] > target["age"] else "match",
-        "height": "taller" if guess_dict["height_cm"] < target["height_cm"] else "shorter" if guess_dict["height_cm"] > target["height_cm"] else "match",
         "team": guess_dict["team_name"] == target["team_name"],
         "sex": guess_dict["sex"] == target["sex"],
-        "jersey_number": ("higher" if guess_dict["jersey_number"] < target["jersey_number"] else "lower" if guess_dict["jersey_number"] > target["jersey_number"] else "match"),
-        "continent": guess_dict["continent"] == target["continent"]
+        "continent": guess_dict["continent"] == target["continent"],
+        
+        "age": compare_numeric(
+            guess_dict["age"], target["age"], close_threshold=2
+        ),
+
+        "height": compare_numeric(
+            guess_dict["height_cm"], target["height_cm"], close_threshold=5
+        ),
+
+        "jersey_number": compare_numeric(
+            guess_dict["jersey_number"], target["jersey_number"], close_threshold=3
+        )
     }
 
     return jsonify({

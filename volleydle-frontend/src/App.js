@@ -69,6 +69,24 @@ function App() {
     setFilteredPlayers(filtered);
   };
 
+  const renderArrow = (feedback) => {
+    if (feedback === "match") return "✓";
+
+    if (feedback === "higher") return "↑";
+    if (feedback === "lower") return "↓";
+
+    if (feedback === "higher_far") return "↑↑";
+    if (feedback === "lower_far") return "↓↓";
+
+    return "";
+  };
+
+  const getArrowColor = (feedback) => {
+    if (feedback === "match") return "lightgreen";
+    if (feedback.includes("far")) return "#ff8c00"; // dark orange
+    return "lightyellow";
+  };
+
   return (
     <div style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
       <h1>Volleydle 🎮</h1>
@@ -177,17 +195,17 @@ function App() {
               <td style={{ backgroundColor: g.feedback.position ? "lightgreen" : "lightcoral" }}>
                 {g.guess.position}
               </td>
-              <td style={{ backgroundColor: g.feedback.age === "match" ? "lightgreen" : "lightyellow" }}>
-                {g.guess.age} ({g.feedback.age})
+              <td style={{ backgroundColor: getArrowColor(g.feedback.age) }}>
+                {g.guess.age} {renderArrow(g.feedback.age)}
               </td>
-              <td style={{ backgroundColor: g.feedback.height === "match" ? "lightgreen" : "lightyellow" }}>
-                {g.guess.height_cm} cm ({g.feedback.height})
+              <td style={{ backgroundColor: getArrowColor(g.feedback.height) }}>
+                {g.guess.height_cm} cm {renderArrow(g.feedback.height)}
               </td>
               <td style={{ backgroundColor: g.feedback.team ? "lightgreen" : "lightcoral" }}>
                 {g.guess.team_name}
               </td>
-              <td style={{ backgroundColor: g.feedback.jersey_number === "match" ? "lightgreen" : "lightyellow" }}>
-                #{g.guess.jersey_number} ({g.feedback.jersey_number})
+              <td style={{ backgroundColor: getArrowColor(g.feedback.jersey_number) }}>
+                #{g.guess.jersey_number} {renderArrow(g.feedback.jersey_number)}
               </td>
               <td style={{ backgroundColor: g.feedback.continent ? "lightgreen" : "lightcoral"}}>
                 {g.guess.continent}
