@@ -70,7 +70,7 @@ def get_db_connection():
     return conn
 
 def get_player_of_the_day():
-    today = datetime.date.today().isoformat()
+    today_utc = datetime.datetime.utcnow().date().isoformat()
     seed = int(hashlib.sha256(today.encode()).hexdigest(), 16) % (10**8)
     random.seed(seed)
 

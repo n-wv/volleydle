@@ -82,27 +82,38 @@ function App() {
   };
 
   // Get time until midnight for next game
-  const getTimeUntilMidnight = () => {
+  const getTimeUntilNextUTC = () => {
     const now = new Date();
-    const midnight = new Date();
-    midnight.setHours(24, 0, 0, 0);
 
-    const diff = midnight - now;
+    const nextUTC = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+        0, 0, 0
+      )
+    );
 
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff / (1000 * 60)) % 60);
-    const seconds = Math.floor((diff / 1000) % 60);
-
-    return `${hours.toString().padStart(2, "0")}:` +
-          `${minutes.toString().padStart(2, "0")}:` +
-          `${seconds.toString().padStart(2, "0")}`;
+    return nextUTC - now;
   };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeLeft(getTimeUntilMidnight());
-    }, 1000);
+    const tick = () => {
+      const diff = getTimeUntilNextUTC();
 
+      const hours = Math.floor(diff / 1000 / 60 / 60);
+      const minutes = Math.floor((diff / 1000 / 60) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+
+      setTimeLeft(
+        `${hours.toString().padStart(2, "0")}:` +
+        `${minutes.toString().padStart(2, "0")}:` +
+        `${seconds.toString().padStart(2, "0")}`
+      );
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -317,8 +328,8 @@ function App() {
                 />
               </div>
             )}
-            <p style={{ marginTop: "10px", fontWeight: "bold" }}>
-              ⏳ Next player in {timeLeft}
+            <p style={{ marginTop: "8px", fontSize: "14px", color: "#666" }}>
+              Next player in {timeLeft} (UTC)
             </p>
           </div>
         </div>
