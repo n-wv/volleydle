@@ -12,6 +12,8 @@ function App() {
   const [gameWon, setGameWon] = useState(false);
   const [winningPlayer, setWinningPlayer] = useState(null);
 
+  const [timeLeft, setTimeLeft] = useState("");
+
   useEffect(() => {
   fetch("https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/players")
     .then(res => res.json())
@@ -77,6 +79,31 @@ function App() {
 
     setFilteredPlayers(filtered);
   };
+
+  // Get time until midnight for next game
+  const getTimeUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+
+    const diff = midnight - now;
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+
+    return `${hours.toString().padStart(2, "0")}:` +
+          `${minutes.toString().padStart(2, "0")}:` +
+          `${seconds.toString().padStart(2, "0")}`;
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft(getTimeUntilMidnight());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const renderArrow = (feedback) => {
     if (feedback === "match") return "";
@@ -260,6 +287,9 @@ function App() {
             </p>
             <p style={{ margin: 0 }}>
               Jersey #{winningPlayer.jersey_number}
+            </p>
+            <p style={{ marginTop: "10px", fontWeight: "bold" }}>
+              ⏳ Next player in {timeLeft}
             </p>
           </div>
         </div>
