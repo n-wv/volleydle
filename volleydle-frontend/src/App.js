@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { HIGHLIGHT_VIDEOS } from "./highlightVideos";
 
 function App() {
   const [guess, setGuess] = useState("");
@@ -122,6 +123,20 @@ function App() {
     if (feedback.includes("far")) return "#ff8c00"; // dark orange
     return "lightyellow";
   };
+
+  const getHighlightVideo = (player) => {
+    if (!player) return null;
+
+    const countryVideos = HIGHLIGHT_VIDEOS[player.nationality];
+    if (!countryVideos) return null;
+
+    return countryVideos[player.sex] || null;
+  };
+
+
+  const highlightVideoId = gameWon
+    ? getHighlightVideo(winningPlayer)
+    : null;
 
   return (
     <div style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
@@ -288,6 +303,20 @@ function App() {
             <p style={{ margin: 0 }}>
               Jersey #{winningPlayer.jersey_number}
             </p>
+            {highlightVideoId && (
+              <div style={{ marginTop: "15px" }}>
+                <iframe
+                  width="100%"
+                  height="215"
+                  src={`https://www.youtube.com/embed/${highlightVideoId}`}
+                  title="Player highlights"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ borderRadius: "8px" }}
+                />
+              </div>
+            )}
             <p style={{ marginTop: "10px", fontWeight: "bold" }}>
               ⏳ Next player in {timeLeft}
             </p>
