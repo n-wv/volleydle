@@ -331,7 +331,7 @@ function App() {
             <p style={{ marginTop: "8px", fontSize: "14px", color: "#666" }}>
               Next player in {timeLeft} (UTC)
             </p>
-          </div>
+          </div>  
         </div>
       )}
 
