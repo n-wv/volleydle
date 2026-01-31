@@ -1,5 +1,17 @@
+// src/App.js
+import "./App.css";
 import React, { useEffect, useState } from "react";
 import { HIGHLIGHT_VIDEOS } from "./highlightVideos";
+
+const DEFAULT_STATS = {
+  gamesPlayed: 0,
+  gamesWon: 0,
+  totalGuessesInWins: 0,
+  oneShots: 0,
+  currentStreak: 0,
+  maxStreak: 0,
+  lastPlayedDate: null // UTC date string
+};
 
 function App() {
   const [guess, setGuess] = useState("");
@@ -12,23 +24,62 @@ function App() {
 
   const [gameWon, setGameWon] = useState(false);
   const [winningPlayer, setWinningPlayer] = useState(null);
+  const [showStats, setShowStats] = useState(false);
 
   const [timeLeft, setTimeLeft] = useState("");
 
+  const [mode, setMode] = useState("men"); // "men" or "women"
+
+  const getTodayUTC = () =>
+    new Date().toISOString().slice(0, 10);
+
+  // For saving stats locally (men/women)
+  const [stats, setStats] = useState(() => {
+    const saved = localStorage.getItem("volleydleStats");
+    return saved
+      ? JSON.parse(saved)
+      : {
+          men: { ...DEFAULT_STATS },
+          women: { ...DEFAULT_STATS }
+        };
+  });
+
   useEffect(() => {
-  fetch("https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/players")
-    .then(res => res.json())
-    .then(data => setAllPlayers(data))
-    .catch(err => console.error(err));
-  }, []);
+    localStorage.setItem("volleydleStats", JSON.stringify(stats));
+  }, [stats]);
+
+  const fetchPlayersForMode = () => {
+    fetch(
+      `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/players?mode=${mode}`
+    )
+      .then((res) => res.json())
+      .then((data) => setAllPlayers(data))
+      .catch((err) => console.error(err));
+  };
+
+  useEffect(() => {
+    // reset per-mode UI state
+    setGuesses([]);
+    setGuess("");
+    setFilteredPlayers([]);
+    setWinningPlayer(null);
+    setGameWon(false);
+    setError(null);
+
+    fetchPlayersForMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   // Handle user guess submission
   const handleGuess = () => {
     if (!guess) return;
     if (gameWon) return;
 
+    // compute guessCount before updating state to avoid stale closure issues
+    const guessCount = guesses.length + 1;
+
     fetch(
-      `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/guess?name=${encodeURIComponent(guess)}`
+      `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/guess?name=${encodeURIComponent(guess)}&mode=${mode}`
     )
       .then((res) => res.json())
       .then((data) => {
@@ -37,11 +88,11 @@ function App() {
           return;
         }
 
-        // Add guess to table
+        // Add guess to table (use functional update)
         setGuesses((prev) => [...prev, data]);
         setError(null);
 
-        //remove guessed player from autocomplete pool
+        // remove guessed player from autocomplete pool
         setAllPlayers((prev) =>
           prev.filter((p) => p.id !== data.guess.id)
         );
@@ -53,7 +104,12 @@ function App() {
         if (data.is_correct) {
           setGameWon(true);
           setWinningPlayer(data.guess);
+          recordWin(guessCount); // use precomputed value
         }
+      })
+      .catch((err) => {
+        console.error(err);
+        setError("Network error");
       });
   };
 
@@ -69,19 +125,63 @@ function App() {
 
     const lower = value.toLowerCase();
 
-    // Include nationality in search
+    // Include nationality and team_name in search, limited to 30
     const filtered = allPlayers
       .filter(p =>
-        p.name.toLowerCase().includes(lower) ||
-        p.nationality.toLowerCase().includes(lower) ||
-        p.team_name.toLowerCase().includes(lower)
+        (p.name || "").toLowerCase().includes(lower) ||
+        (p.nationality || "").toLowerCase().includes(lower) ||
+        (p.team_name || "").toLowerCase().includes(lower)
       )
-      .slice(0, 30); // Limit to 30 results
+      .slice(0, 30);
 
     setFilteredPlayers(filtered);
   };
 
-  // Get time until midnight for next game
+  const recordWin = (guessCount) => {
+    const today = getTodayUTC();
+
+    setStats(prev => {
+      const s = prev[mode] || { ...DEFAULT_STATS }; // guard
+      const isNewDay = s.lastPlayedDate !== today;
+
+      const newCurrentStreak = isNewDay
+        ? s.currentStreak + 1
+        : s.currentStreak;
+
+      return {
+        ...prev,
+        [mode]: {
+          ...s,
+          gamesPlayed: s.gamesPlayed + (isNewDay ? 1 : 0),
+          gamesWon: s.gamesWon + (isNewDay ? 1 : 0),
+          totalGuessesInWins: s.totalGuessesInWins + guessCount,
+          oneShots: s.oneShots + (guessCount === 1 ? 1 : 0),
+          currentStreak: newCurrentStreak,
+          maxStreak: Math.max(s.maxStreak, newCurrentStreak),
+          lastPlayedDate: today
+        }
+      };
+    });
+  };
+
+  const recordLoss = () => {
+    const today = getTodayUTC();
+
+    setStats((prev) => {
+      const s = prev[mode] || { ...DEFAULT_STATS };
+      return {
+        ...prev,
+        [mode]: {
+          ...s,
+          gamesPlayed: s.gamesPlayed + 1,
+          currentStreak: 0,
+          lastPlayedDate: today
+        }
+      };
+    });
+  };
+
+  // Get time until midnight for next game (UTC)
   const getTimeUntilNextUTC = () => {
     const now = new Date();
 
@@ -131,7 +231,7 @@ function App() {
 
   const getArrowColor = (feedback) => {
     if (feedback === "match") return "lightgreen";
-    if (feedback.includes("far")) return "#ff8c00"; // dark orange
+    if (feedback && feedback.includes("far")) return "#ff8c00"; // dark orange
     return "lightyellow";
   };
 
@@ -141,9 +241,23 @@ function App() {
     const countryVideos = HIGHLIGHT_VIDEOS[player.nationality];
     if (!countryVideos) return null;
 
-    return countryVideos[player.sex] || null;
+    // map 'M'/'F' to our mapping keys 'men'/'women'
+    const sexKey = (player.sex === "F" || player.sex === "f" || player.sex === "Female") ? "women" : "men";
+    return countryVideos[sexKey] || null;
   };
 
+  // safe fallback if stats not present
+  const currentStats = (stats && stats[mode]) ? stats[mode] : { ...DEFAULT_STATS };
+
+  const winPercentage =
+    currentStats.gamesPlayed > 0
+      ? Math.round((currentStats.gamesWon / currentStats.gamesPlayed) * 100)
+      : 0;
+
+  const avgGuesses =
+    currentStats.gamesWon > 0
+      ? (currentStats.totalGuessesInWins / currentStats.gamesWon).toFixed(2)
+      : "-";
 
   const highlightVideoId = gameWon
     ? getHighlightVideo(winningPlayer)
@@ -153,6 +267,23 @@ function App() {
     <div style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
       <h1>Volleydle 🎮</h1>
       <p>Guess the Olympic volleyball player of the day!</p>
+
+      <div style={{ marginBottom: "10px" }}>
+        <button
+          onClick={() => setMode("men")}
+          disabled={mode === "men"}
+        >
+          Men's
+        </button>
+
+        <button
+          onClick={() => setMode("women")}
+          disabled={mode === "women"}
+          style={{ marginLeft: "8px" }}
+        >
+          Women's
+        </button>
+      </div>
 
       <div style={{ position: "relative", width: "300px" }}>
         <input
@@ -173,8 +304,8 @@ function App() {
             width: "100%",
             backgroundColor: "white",
             zIndex: 10,
-            maxHeight: "200px",     
-            overflowY: "auto"       //enables scrolling
+            maxHeight: "200px",
+            overflowY: "auto"       // enables scrolling
           }}>
             {filteredPlayers.map(player => (
               <li
@@ -217,7 +348,10 @@ function App() {
           </ul>
         )}
       </div>
-      <button onClick={handleGuess}>Guess</button>
+
+      <button onClick={handleGuess} disabled={gameWon || !guess}>
+        Guess
+      </button>
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
@@ -314,6 +448,32 @@ function App() {
             <p style={{ margin: 0 }}>
               Jersey #{winningPlayer.jersey_number}
             </p>
+
+            <button
+              className="stats-button"
+              onClick={() => setShowStats(true)}
+            >
+              📊 Stats
+            </button>
+
+            {showStats && (
+              <div className="modal-overlay" onClick={() => setShowStats(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h2>Your Stats ({mode === "men" ? "Men" : "Women"})</h2>
+
+                  <p>Games Played: {currentStats.gamesPlayed}</p>
+                  <p>Games Won: {currentStats.gamesWon}</p>
+                  <p>Win %: {winPercentage}%</p>
+                  <p>Avg Guesses: {avgGuesses}</p>
+                  <p>One-Shots 🎯: {currentStats.oneShots}</p>
+                  <p>Current Streak 🔥: {currentStats.currentStreak}</p>
+                  <p>Max Streak 🏆: {currentStats.maxStreak}</p>
+
+                  <button onClick={() => setShowStats(false)}>Close</button>
+                </div>
+              </div>
+            )}
+
             {highlightVideoId && (
               <div style={{ marginTop: "15px" }}>
                 <iframe
@@ -331,7 +491,7 @@ function App() {
             <p style={{ marginTop: "8px", fontSize: "14px", color: "#666" }}>
               Next player in {timeLeft} (UTC)
             </p>
-          </div>  
+          </div>
         </div>
       )}
 

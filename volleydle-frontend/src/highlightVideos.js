@@ -28,7 +28,7 @@ export const HIGHLIGHT_VIDEOS = {
     F: "g5UiWw0F4hc"
   },
   "Germany": {
-    M: "FyhwriatIWs",
+    M: "So9UF1UIi1w",
     F: "WyScyhr6OVc" // losing :(
   },
   "Italy": {

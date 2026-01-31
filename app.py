@@ -77,7 +77,7 @@ def get_player_of_the_day():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT id FROM players;")
+    cur.execute("SELECT id FROM players WHERE sex = %s;")
     player_ids = [row[0] for row in cur.fetchall()]
 
     chosen_id = random.choice(player_ids)
@@ -123,9 +123,14 @@ def home():
 
 @app.route("/api/player-of-the-day", methods=["GET"])
 def player_of_the_day():
-    player = get_player_of_the_day()
+    mode = request.args.get("mode", "men")
+    sex = "M" if mode == "men" else "F"
+
+    player = get_player_of_the_day(sex=sex)
+
     if not player:
         return jsonify({"error": "No player found"}), 404
+
     return jsonify(player)
 
 @app.route("/api/players", methods=["GET"])
@@ -134,7 +139,7 @@ def all_players():
     cur = conn.cursor()
     cur.execute("""
         SELECT id, name, nationality, position, birthdate, age, height_cm, picture_url, team_name, jersey_number, sex
-        FROM players;
+        FROM players WHERE sex = %s;
     """)
     rows = cur.fetchall()
     cur.close()
