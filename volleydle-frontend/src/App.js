@@ -15,7 +15,6 @@ const DEFAULT_STATS = {
 
 function App() {
   const [guess, setGuess] = useState("");
-  const [guesses, setGuesses] = useState([]);
   const [error, setError] = useState(null);
 
   // For fetching players
@@ -48,22 +47,57 @@ function App() {
     localStorage.setItem("volleydleStats", JSON.stringify(stats));
   }, [stats]);
 
+  const [guessesByMode, setGuessesByMode] = useState(() => {
+    const saved = localStorage.getItem("volleydleGuesses");
+    if (saved) return JSON.parse(saved);
+    return { men: [], women: [] };
+  });
+
+  // Persist guesses as well as stats
+  useEffect(() => {
+    localStorage.setItem("volleydleStats", JSON.stringify(stats));
+  }, [stats]);
+
+  useEffect(() => {
+    localStorage.setItem("volleydleGuesses", JSON.stringify(guessesByMode));
+  }, [guessesByMode]);
+
+  // Restore win state when mode changes
+  useEffect(() => {
+    const guesses = guessesByMode[mode] || [];
+    const lastGuess = guesses[guesses.length - 1];
+
+    if (lastGuess && lastGuess.is_correct) {
+      setGameWon(true);
+      setWinningPlayer(lastGuess.guess);
+    } else {
+      setGameWon(false);
+      setWinningPlayer(null);
+    }
+  }, [mode, guessesByMode]);
+  
+  const currentGuesses = guessesByMode[mode] || [];
+
   const fetchPlayersForMode = () => {
     fetch(
       `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/players?mode=${mode}`
     )
       .then((res) => res.json())
-      .then((data) => setAllPlayers(data))
+      .then((data) => {
+        const guessedIds = new Set(
+          (guessesByMode[mode] || []).map(g => g.guess.id)
+        );
+
+        const remaining = data.filter(p => !guessedIds.has(p.id));
+        setAllPlayers(remaining);
+      })
       .catch((err) => console.error(err));
   };
 
   useEffect(() => {
     // reset per-mode UI state
-    setGuesses([]);
     setGuess("");
     setFilteredPlayers([]);
-    setWinningPlayer(null);
-    setGameWon(false);
     setError(null);
 
     fetchPlayersForMode();
@@ -75,9 +109,6 @@ function App() {
     if (!guess) return;
     if (gameWon) return;
 
-    // compute guessCount before updating state to avoid stale closure issues
-    const guessCount = guesses.length + 1;
-
     fetch(
       `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/guess?name=${encodeURIComponent(guess)}&mode=${mode}`
     )
@@ -88,30 +119,38 @@ function App() {
           return;
         }
 
-        // Add guess to table (use functional update)
-        setGuesses((prev) => [...prev, data]);
         setError(null);
 
-        // remove guessed player from autocomplete pool
-        setAllPlayers((prev) =>
-          prev.filter((p) => p.id !== data.guess.id)
-        );
+        // Append the guess into the correct mode bucket and get new length
+        setGuessesByMode((prev) => {
+          const updatedModeGuesses = [...(prev[mode] || []), data];
+          const newState = { ...prev, [mode]: updatedModeGuesses };
 
-        // Clear UI
+          // Persist happens via effect; now compute guessCount and call recordWin if correct
+          if (data.is_correct) {
+            // recordWin expects number of guesses it took to win
+            const guessCount = updatedModeGuesses.length;
+            recordWin(guessCount);
+            setGameWon(true);
+            setWinningPlayer(data.guess);
+          }
+
+          return newState;
+        });
+
+        // remove guessed player from autocomplete pool for current mode
+        setAllPlayers((prev) => prev.filter((p) => p.id !== data.guess.id));
+
+        // UI cleanup
         setFilteredPlayers([]);
         setGuess("");
-
-        if (data.is_correct) {
-          setGameWon(true);
-          setWinningPlayer(data.guess);
-          recordWin(guessCount); // use precomputed value
-        }
       })
       .catch((err) => {
         console.error(err);
         setError("Network error");
       });
   };
+
 
   // Adjust list of players as user types
   const handleInputChange = (e) => {
@@ -154,8 +193,8 @@ function App() {
           ...s,
           gamesPlayed: s.gamesPlayed + (isNewDay ? 1 : 0),
           gamesWon: s.gamesWon + (isNewDay ? 1 : 0),
-          totalGuessesInWins: s.totalGuessesInWins + guessCount,
-          oneShots: s.oneShots + (guessCount === 1 ? 1 : 0),
+          totalGuessesInWins: s.totalGuessesInWins + (isNewDay ? guessCount : 0),
+          oneShots: s.oneShots + (isNewDay && guessCount === 1 ? 1 : 0),
           currentStreak: newCurrentStreak,
           maxStreak: Math.max(s.maxStreak, newCurrentStreak),
           lastPlayedDate: today
@@ -180,6 +219,8 @@ function App() {
       };
     });
   };
+
+
 
   // Get time until midnight for next game (UTC)
   const getTimeUntilNextUTC = () => {
@@ -241,9 +282,7 @@ function App() {
     const countryVideos = HIGHLIGHT_VIDEOS[player.nationality];
     if (!countryVideos) return null;
 
-    // map 'M'/'F' to our mapping keys 'men'/'women'
-    const sexKey = (player.sex === "F" || player.sex === "f" || player.sex === "Female") ? "women" : "men";
-    return countryVideos[sexKey] || null;
+    return countryVideos[player.sex] || null;
   };
 
   // safe fallback if stats not present
@@ -369,7 +408,7 @@ function App() {
           </tr>
         </thead>
         <tbody>
-          {guesses.map((g, i) => (
+          {currentGuesses.map((g, i) => (
             <tr key={i}>
               <td style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <img
