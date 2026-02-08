@@ -14,6 +14,8 @@ const DEFAULT_STATS = {
 };
 
 function App() {
+  const DEFAULT_PLAYER_IMAGE = "/default-player.png"; // put this in /public
+
   const [guess, setGuess] = useState("");
   const [error, setError] = useState(null);
 
@@ -28,6 +30,9 @@ function App() {
   const [timeLeft, setTimeLeft] = useState("");
 
   const [mode, setMode] = useState("men"); // "men" or "women"
+
+  const [showInfo, setShowInfo] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const getTodayUTC = () =>
     new Date().toISOString().slice(0, 10);
@@ -49,13 +54,67 @@ function App() {
 
   const [guessesByMode, setGuessesByMode] = useState(() => {
     const saved = localStorage.getItem("volleydleGuesses");
-    if (saved) return JSON.parse(saved);
-    return { men: [], women: [] };
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (!saved) {
+      return { date: today, men: [], women: [] };
+    }
+
+    const parsed = JSON.parse(saved);
+
+    // 🔑 If guesses are from a previous day → reset
+    if (parsed.date !== today) {
+      return { date: today, men: [], women: [] };
+    }
+
+    return parsed;
   });
+
+  // Check for new day at regular intervals to reset guesses
+  useEffect(() => {
+    const checkDate = () => {
+      const today = getTodayUTC();
+
+      setGuessesByMode(prev => {
+        if (prev.date === today) return prev;
+
+        // 🔑 NEW: streak breaks unless you WON yesterday
+        const yesterdayGuessesMen = prev.men || [];
+        const yesterdayGuessesWomen = prev.women || [];
+
+        const didWinMen = yesterdayGuessesMen.some(g => g.is_correct);
+        const didWinWomen = yesterdayGuessesWomen.some(g => g.is_correct);
+
+        setStats(prevStats => ({
+          men: {
+            ...prevStats.men,
+            currentStreak: didWinMen ? prevStats.men.currentStreak : 0,
+          },
+          women: {
+            ...prevStats.women,
+            currentStreak: didWinWomen ? prevStats.women.currentStreak : 0,
+          }
+        }));
+
+        setGameWon(false);
+        setWinningPlayer(null);
+
+        return {
+          date: today,
+          men: [],
+          women: []
+        };
+      });
+    };
+
+    checkDate();
+    const interval = setInterval(checkDate, 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Persist guesses as well as stats
   useEffect(() => {
-    localStorage.setItem("volleydleStats", JSON.stringify(stats));
+    localStorage.setItem("volleydleStats", JSON.stringify(stats));  
   }, [stats]);
 
   useEffect(() => {
@@ -151,6 +210,11 @@ function App() {
       });
   };
 
+  const normalizeText = (str = "") =>
+  str
+    .toLowerCase()
+    .normalize("NFD")              // split letters + accents
+    .replace(/[\u0300-\u036f]/g, ""); // remove accents
 
   // Adjust list of players as user types
   const handleInputChange = (e) => {
@@ -162,15 +226,16 @@ function App() {
       return;
     }
 
-    const lower = value.toLowerCase();
+    const search = normalizeText(value);
 
-    // Include nationality and team_name in search, limited to 30
     const filtered = allPlayers
-      .filter(p =>
-        (p.name || "").toLowerCase().includes(lower) ||
-        (p.nationality || "").toLowerCase().includes(lower) ||
-        (p.team_name || "").toLowerCase().includes(lower)
-      )
+      .filter(p => {
+        return (
+          normalizeText(p.name).includes(search) ||
+          normalizeText(p.nationality).includes(search) ||
+          normalizeText(p.team_name).includes(search)
+        );
+      })
       .slice(0, 30);
 
     setFilteredPlayers(filtered);
@@ -258,6 +323,8 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const COL_DELAY = 120;
+
   const renderArrow = (feedback) => {
     if (feedback === "match") return "";
 
@@ -270,11 +337,20 @@ function App() {
     return "";
   };
 
-  const getArrowColor = (feedback) => {
-    if (feedback === "match") return "lightgreen";
-    if (feedback && feedback.includes("far")) return "#ff8c00"; // dark orange
-    return "lightyellow";
-  };
+  function getArrowClass(feedback) {
+    switch(feedback) {
+      case "match":
+        return "good";       
+      case "higher":
+      case "lower":
+        return "warn";       
+      case "higher_far":
+      case "lower_far":
+        return "near";       
+      default:
+        return "bad";        
+    }
+  }
 
   const getHighlightVideo = (player) => {
     if (!player) return null;
@@ -303,239 +379,193 @@ function App() {
     : null;
 
   return (
-    <div style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
-      <h1>Volleydle 🎮</h1>
-      <p>Guess the Olympic volleyball player of the day!</p>
+    <div className="app-bg">
+      <div className="app-container">
 
-      <div style={{ marginBottom: "10px" }}>
-        <button
-          onClick={() => setMode("men")}
-          disabled={mode === "men"}
-        >
-          Men's
-        </button>
+        {/* Title */}
+        <div className="section-card title-section">
+          <h1>Volleydle</h1>
+          <p>Guess the volleyball player of the day!</p>
+        </div>
 
-        <button
-          onClick={() => setMode("women")}
-          disabled={mode === "women"}
-          style={{ marginLeft: "8px" }}
-        >
-          Women's
-        </button>
-      </div>
+        {/* -------------------- Mode toggle + Info/Help buttons -------------------- */}
+        <div className="section-card mode-toggle-card" style={{ display: "flex", alignItems: "center", gap: "12px", justifyContent: "center" }}>
+          
+          {/* Info Button */}
+          <button className="info-help-button" onClick={() => setShowInfo(true)}>i</button>
+          
+          {/* Mode toggle */}
+          <div className="mode-toggle">
+            <button onClick={() => setMode("men")} disabled={mode === "men"}>Men's</button>
+            <button onClick={() => setMode("women")} disabled={mode === "women"}>Women's</button>
+          </div>
 
-      <div style={{ position: "relative", width: "300px" }}>
-        <input
-          type="text"
-          value={guess}
-          onChange={handleInputChange}
-          placeholder="Search player..."
-          style={{ width: "100%" }}
-        />
+          {/* Help Button */}
+          <button className="info-help-button" onClick={() => setShowHelp(true)}>?</button>
+        </div>
 
-        {filteredPlayers.length > 0 && (
-          <ul style={{
-            listStyle: "none",
-            margin: 0,
-            padding: 0,
-            border: "1px solid #ccc",
-            position: "absolute",
-            width: "100%",
-            backgroundColor: "white",
-            zIndex: 10,
-            maxHeight: "200px",
-            overflowY: "auto"       // enables scrolling
-          }}>
-            {filteredPlayers.map(player => (
-              <li
-                key={player.id}
-                onClick={() => {
-                  setGuess(player.name);
-                  setFilteredPlayers([]);
-                }}
-                style={{
-                  padding: "6px 8px",
-                  cursor: "pointer",
-                  borderBottom: "1px solid #eee",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px"
-                }}
-              >
-                <img
-                  src={player.picture_url}
-                  loading="lazy"
-                  onError={(e) => {
-                    e.target.src = "/logo192.png";
-                  }}
-                  alt={player.name}
-                  style={{
-                    width: "36px",
-                    height: "36px",
-                    borderRadius: "50%",
-                    objectFit: "cover"
-                  }}
-                />
-                <div>
-                  <div style={{ fontWeight: "bold" }}>{player.name}</div>
-                  <div style={{ fontSize: "12px", color: "#666" }}>
-                    {player.nationality}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+        {/* -------------------- Info Modal -------------------- */}
+        {showInfo && (
+          <div className="modal-overlay" onClick={() => setShowInfo(false)}>
+            <div className="info-help-modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Info</h2>
+              <p>Every day, try to guess the volleyball player of the day!</p>
+              <p>The game is based on player information the 2024 Olympics.</p>
+              <p>Contact: volleydlegame@gmail.com</p>
+              <p className="countdown">Next player in: {timeLeft} (UTC)</p>
+              <button className="close-modal" onClick={() => setShowInfo(false)}>Close</button>
+            </div>
+          </div>
         )}
-      </div>
 
-      <button onClick={handleGuess} disabled={gameWon || !guess}>
-        Guess
-      </button>
+        {/* -------------------- Help Modal -------------------- */}
+        {showHelp && (
+          <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+            <div className="info-help-modal" onClick={(e) => e.stopPropagation()}>
+              <h2>How to Play</h2>
+              <p>Enter a player’s name to uncover their attributes.</p>
+              <p>The tile colors show how close your guess is to the correct player:</p>
+              <ul>
+                <li><strong>Green:</strong> Exact match</li>
+                <li><strong>Yellow:</strong> Close Guess (for numbers)</li>
+                <li><strong>Orange:</strong> Far Guess (for numbers)</li>
+                <li><strong>Red:</strong> No match</li>
+                <li>Arrows indicate if the correct answer is above or below your guess, and the amount corresponds to if it is far or near</li>
+              </ul>
+              <p className="countdown">Next player in: {timeLeft} (UTC)</p>
+              <button className="close-modal" onClick={() => setShowHelp(false)}>Close</button>
+            </div>
+          </div>
+        )}
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+        {/* Search & Guess */}
+        <div className="section-card search-section">
+          <input type="text" value={guess} onChange={handleInputChange} placeholder="Search player or country..." />
+          {filteredPlayers.length > 0 && (
+            <ul className="autocomplete">
+              {filteredPlayers.map(p => (
+                <li key={p.id} onClick={() => { setGuess(p.name); setFilteredPlayers([]); }}>
+                  <img src={p.picture_url || DEFAULT_PLAYER_IMAGE} alt={p.name} />
+                  <div>
+                    <strong>{p.name}</strong>
+                    <span>{p.nationality}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button className="guess-button" onClick={handleGuess} disabled={gameWon || !guess}>Guess</button>
+          {error && <p className="error">{error}</p>}
+        </div>
 
-      <table border="1" cellPadding="8" style={{ marginTop: "20px" }}>
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th>Nationality</th>
-            <th>Position</th>
-            <th>Age</th>
-            <th>Height</th>
-            <th>Jersey</th>
-            <th>Continent</th>
-            <th>Sex</th>
-          </tr>
-        </thead>
-        <tbody>
-          {currentGuesses.map((g, i) => (
-            <tr key={i}>
-              <td style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <img
-                  src={g.guess.picture_url}
-                  alt={g.guess.name}
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "50%",
-                    objectFit: "cover"
-                  }}
-                />
-                {g.guess.name}
-              </td>
-              <td style={{ backgroundColor: g.feedback.nationality ? "lightgreen" : "lightcoral" }}>
-                {g.guess.nationality}
-              </td>
-              <td style={{ backgroundColor: g.feedback.position ? "lightgreen" : "lightcoral" }}>
-                {g.guess.position}
-              </td>
-              <td style={{ backgroundColor: getArrowColor(g.feedback.age) }}>
-                {g.guess.age} {renderArrow(g.feedback.age)}
-              </td>
-              <td style={{ backgroundColor: getArrowColor(g.feedback.height) }}>
-                {g.guess.height_cm} cm {renderArrow(g.feedback.height)}
-              </td>
-              <td style={{ backgroundColor: getArrowColor(g.feedback.jersey_number) }}>
-                #{g.guess.jersey_number} {renderArrow(g.feedback.jersey_number)}
-              </td>
-              <td style={{ backgroundColor: g.feedback.continent ? "lightgreen" : "lightcoral"}}>
-                {g.guess.continent}
-              </td>
-              <td style={{ backgroundColor: g.feedback.sex ? "lightgreen" : "lightcoral" }}>
-                {g.guess.sex}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        {/* Guess Table */}
+        <div className="section-card table-section">
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Player</th><th>Nationality</th><th>Position</th><th>Age</th>
+                  <th>Height</th><th>Jersey</th><th>Continent</th><th>Sex</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentGuesses.map((g, i) => {
+                  const isLatest = i === currentGuesses.length - 1;
 
-      {gameWon && winningPlayer && (
-        <div style={{
-          marginTop: "30px",
-          padding: "20px",
-          border: "2px solid #4caf50",
-          borderRadius: "12px",
-          display: "flex",
-          alignItems: "center",
-          gap: "20px",
-          backgroundColor: "#e8f5e9"
-        }}>
-          <img
-            src={winningPlayer.picture_url}
-            alt={winningPlayer.name}
-            style={{
-              width: "120px",
-              height: "120px",
-              borderRadius: "50%",
-              objectFit: "cover"
-            }}
-          />
+                  return (
+                    <tr key={i} className={isLatest ? "reveal-row" : ""}>
+                      <td className={`player-cell reveal-tile ${!isLatest ? "revealed" : ""}`} style={{ "--d": 0 }}>
+                        <img src={g.guess.picture_url || DEFAULT_PLAYER_IMAGE} alt={g.guess.name} />
+                        {g.guess.name}
+                      </td>
 
-          <div>
-            <h2 style={{ margin: 0 }}>
-              🎉 You got it!
-            </h2>
-            <h3 style={{ margin: "5px 0" }}>
-              {winningPlayer.flag} {winningPlayer.name}
-            </h3>
-            <p style={{ margin: 0 }}>
-              {winningPlayer.nationality} • {winningPlayer.position}
-            </p>
-            <p style={{ margin: 0 }}>
-              Team: {winningPlayer.team_name}
-            </p>
-            <p style={{ margin: 0 }}>
-              Jersey #{winningPlayer.jersey_number}
-            </p>
+                      <td className={`reveal-tile ${g.feedback.nationality ? "good" : "bad"} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 1 }}>
+                        {g.guess.nationality}
+                      </td>
 
-            <button
-              className="stats-button"
-              onClick={() => setShowStats(true)}
-            >
-              📊 Stats
-            </button>
+                      <td className={`reveal-tile ${g.feedback.position ? "good" : "bad"} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 2 }}>
+                        {g.guess.position}
+                      </td>
 
-            {showStats && (
-              <div className="modal-overlay" onClick={() => setShowStats(false)}>
-                <div className="modal" onClick={(e) => e.stopPropagation()}>
-                  <h2>Your Stats ({mode === "men" ? "Men" : "Women"})</h2>
+                      <td className={`reveal-tile ${getArrowClass(g.feedback.age)} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 3 }}>
+                        {g.guess.age} {renderArrow(g.feedback.age)}
+                      </td>
 
-                  <p>Games Played: {currentStats.gamesPlayed}</p>
-                  <p>Games Won: {currentStats.gamesWon}</p>
-                  <p>Win %: {winPercentage}%</p>
-                  <p>Avg Guesses: {avgGuesses}</p>
-                  <p>One-Shots 🎯: {currentStats.oneShots}</p>
-                  <p>Current Streak 🔥: {currentStats.currentStreak}</p>
-                  <p>Max Streak 🏆: {currentStats.maxStreak}</p>
+                      <td className={`reveal-tile ${getArrowClass(g.feedback.height)} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 4 }}>
+                        {g.guess.height_cm} cm {renderArrow(g.feedback.height)}
+                      </td>
 
-                  <button onClick={() => setShowStats(false)}>Close</button>
-                </div>
-              </div>
-            )}
+                      <td className={`reveal-tile ${getArrowClass(g.feedback.jersey_number)} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 5 }}>
+                        #{g.guess.jersey_number} {renderArrow(g.feedback.jersey_number)}
+                      </td>
 
-            {highlightVideoId && (
-              <div style={{ marginTop: "15px" }}>
-                <iframe
-                  width="100%"
-                  height="215"
-                  src={`https://www.youtube.com/embed/${highlightVideoId}`}
-                  title="Player highlights"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  style={{ borderRadius: "8px" }}
-                />
-              </div>
-            )}
-            <p style={{ marginTop: "8px", fontSize: "14px", color: "#666" }}>
-              Next player in {timeLeft} (UTC)
-            </p>
+                      <td className={`reveal-tile ${g.feedback.continent ? "good" : "bad"} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 6 }}>
+                        {g.guess.continent}
+                      </td>
+
+                      <td className={`reveal-tile ${g.feedback.sex ? "good" : "bad"} ${!isLatest ? "revealed" : ""}`} style={{ "--d": 7 }}>
+                        {g.guess.sex}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
 
+        {/* Win Card */}
+        {gameWon && winningPlayer && (
+          <div className="win-card">
+            <img src={winningPlayer.picture_url || DEFAULT_PLAYER_IMAGE} alt={winningPlayer.name} />
+            <div className="win-info">
+              <h2>Today's player:</h2>
+              <h3>{winningPlayer.flag} {winningPlayer.name}</h3>
+              <p>{winningPlayer.nationality} • {winningPlayer.position}</p>
+
+              {/* Stats button */}
+              <button onClick={() => setShowStats(true)}>Stats</button>
+
+              {/* Explore team text */}
+              {winningPlayer.team_name && (
+                <p className="explore-team">Explore team {winningPlayer.team_name}</p>
+              )}
+
+              {/* Video embed */}
+              {highlightVideoId && (
+                <iframe 
+                  src={`https://www.youtube.com/embed/${highlightVideoId}`} 
+                  title="Highlights" 
+                  allowFullScreen 
+                />
+              )}
+
+              <p className="countdown">Next player in {timeLeft} (UTC)</p>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Modal */}
+        {showStats && (
+          <div className="modal-overlay" onClick={() => setShowStats(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Your Stats ({mode === "men" ? "Men" : "Women"})</h2>
+              <p>Games Played: {currentStats.gamesPlayed}</p>
+              <p>Games Won: {currentStats.gamesWon}</p>
+              <p>Win %: {winPercentage}%</p>
+              <p>Avg Guesses: {avgGuesses}</p>
+              <p>One-Shots: {currentStats.oneShots}</p>
+              <p>Current Streak: {currentStats.currentStreak}</p>
+              <p>Max Streak: {currentStats.maxStreak}</p>
+              <button onClick={() => setShowStats(false)}>Close</button>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
+
 }
 
 export default App;

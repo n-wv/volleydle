@@ -32,8 +32,8 @@ export const HIGHLIGHT_VIDEOS = {
     F: "WyScyhr6OVc" // losing :(
   },
   "Italy": {
-    M: "SY5sPK1YTgc",
-    F: "16c01uiOUCs"
+    M: "QEyDaU8P-XM",
+    F: "0ErDRrg9tM8"
   },
   "Japan": {
     M: "flzPMXjBcFM",
@@ -65,6 +65,6 @@ export const HIGHLIGHT_VIDEOS = {
   },
   "United States": {
     M: "QYZcNu1D37Q",
-    F: "eP2Nb8TDvvQ"
+    F: "Sxag-kynFFM"
   }
 };
