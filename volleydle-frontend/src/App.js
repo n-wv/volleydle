@@ -3,6 +3,10 @@ import "./App.css";
 import React, { useEffect, useState } from "react";
 import { HIGHLIGHT_VIDEOS } from "./highlightVideos";
 
+/* -------------------------------------------------------------------------- */
+/*                                   Constants                                */
+/* -------------------------------------------------------------------------- */
+
 const DEFAULT_STATS = {
   gamesPlayed: 0,
   gamesWon: 0,
@@ -13,31 +17,40 @@ const DEFAULT_STATS = {
   lastPlayedDate: null // UTC date string
 };
 
+/* -------------------------------------------------------------------------- */
+/*                                    App                                     */
+/* -------------------------------------------------------------------------- */
+
 function App() {
-  const DEFAULT_PLAYER_IMAGE = "/default-player.png"; // put this in /public
+  const DEFAULT_PLAYER_IMAGE = "/default-player.png"; // /public fallback image
+  const API_URL = process.env.REACT_APP_API_URL;
+
+  /* ---------------------------------- State --------------------------------- */
 
   const [guess, setGuess] = useState("");
   const [error, setError] = useState(null);
 
-  // For fetching players
   const [allPlayers, setAllPlayers] = useState([]);
   const [filteredPlayers, setFilteredPlayers] = useState([]);
 
   const [gameWon, setGameWon] = useState(false);
   const [winningPlayer, setWinningPlayer] = useState(null);
+
   const [showStats, setShowStats] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const [timeLeft, setTimeLeft] = useState("");
 
-  const [mode, setMode] = useState("men"); // "men" or "women"
+  const [mode, setMode] = useState("men");
 
-  const [showInfo, setShowInfo] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
+  /* ---------------------------------- Utils --------------------------------- */
 
   const getTodayUTC = () =>
     new Date().toISOString().slice(0, 10);
 
-  // For saving stats locally (men/women)
+  /* ------------------------------ Player Stats ------------------------------ */
+
   const [stats, setStats] = useState(() => {
     const saved = localStorage.getItem("volleydleStats");
     return saved
@@ -52,9 +65,11 @@ function App() {
     localStorage.setItem("volleydleStats", JSON.stringify(stats));
   }, [stats]);
 
+  /* ------------------------------ Daily Guesses ------------------------------ */
+
   const [guessesByMode, setGuessesByMode] = useState(() => {
     const saved = localStorage.getItem("volleydleGuesses");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayUTC();
 
     if (!saved) {
       return { date: today, men: [], women: [] };
@@ -62,7 +77,6 @@ function App() {
 
     const parsed = JSON.parse(saved);
 
-    // 🔑 If guesses are from a previous day → reset
     if (parsed.date !== today) {
       return { date: today, men: [], women: [] };
     }
@@ -70,7 +84,8 @@ function App() {
     return parsed;
   });
 
-  // Check for new day at regular intervals to reset guesses
+  /* ---------------------------- Daily Reset Logic ---------------------------- */
+
   useEffect(() => {
     const checkDate = () => {
       const today = getTodayUTC();
@@ -78,21 +93,20 @@ function App() {
       setGuessesByMode(prev => {
         if (prev.date === today) return prev;
 
-        // 🔑 NEW: streak breaks unless you WON yesterday
-        const yesterdayGuessesMen = prev.men || [];
-        const yesterdayGuessesWomen = prev.women || [];
+        const yesterdayMen = prev.men || [];
+        const yesterdayWomen = prev.women || [];
 
-        const didWinMen = yesterdayGuessesMen.some(g => g.is_correct);
-        const didWinWomen = yesterdayGuessesWomen.some(g => g.is_correct);
+        const didWinMen = yesterdayMen.some(g => g.is_correct);
+        const didWinWomen = yesterdayWomen.some(g => g.is_correct);
 
         setStats(prevStats => ({
           men: {
             ...prevStats.men,
-            currentStreak: didWinMen ? prevStats.men.currentStreak : 0,
+            currentStreak: didWinMen ? prevStats.men.currentStreak : 0
           },
           women: {
             ...prevStats.women,
-            currentStreak: didWinWomen ? prevStats.women.currentStreak : 0,
+            currentStreak: didWinWomen ? prevStats.women.currentStreak : 0
           }
         }));
 
@@ -112,16 +126,17 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Persist guesses as well as stats
-  useEffect(() => {
-    localStorage.setItem("volleydleStats", JSON.stringify(stats));  
-  }, [stats]);
+  /* ----------------------------- Persist Guesses ----------------------------- */
 
   useEffect(() => {
-    localStorage.setItem("volleydleGuesses", JSON.stringify(guessesByMode));
+    localStorage.setItem(
+      "volleydleGuesses",
+      JSON.stringify(guessesByMode)
+    );
   }, [guessesByMode]);
 
-  // Restore win state when mode changes
+  /* -------------------------- Restore Win Per Mode --------------------------- */
+
   useEffect(() => {
     const guesses = guessesByMode[mode] || [];
     const lastGuess = guesses[guesses.length - 1];
@@ -134,15 +149,15 @@ function App() {
       setWinningPlayer(null);
     }
   }, [mode, guessesByMode]);
-  
+
   const currentGuesses = guessesByMode[mode] || [];
 
+  /* ---------------------------- Fetch Player List ---------------------------- */
+
   const fetchPlayersForMode = () => {
-    fetch(
-      `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/players?mode=${mode}`
-    )
-      .then((res) => res.json())
-      .then((data) => {
+    fetch(`${API_URL}/api/players?mode=${mode}`)
+      .then(res => res.json())
+      .then(data => {
         const guessedIds = new Set(
           (guessesByMode[mode] || []).map(g => g.guess.id)
         );
@@ -150,29 +165,27 @@ function App() {
         const remaining = data.filter(p => !guessedIds.has(p.id));
         setAllPlayers(remaining);
       })
-      .catch((err) => console.error(err));
+      .catch(err => console.error(err));
   };
 
   useEffect(() => {
-    // reset per-mode UI state
     setGuess("");
     setFilteredPlayers([]);
     setError(null);
-
     fetchPlayersForMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Handle user guess submission
+  /* ------------------------------ Guess Handling ----------------------------- */
+
   const handleGuess = () => {
-    if (!guess) return;
-    if (gameWon) return;
+    if (!guess || gameWon) return;
 
     fetch(
-      `https://volleydle-fucmazapa4d5dyax.westus-01.azurewebsites.net/api/guess?name=${encodeURIComponent(guess)}&mode=${mode}`
+      `${API_URL}/api/guess?name=${encodeURIComponent(guess)}&mode=${mode}`
     )
-      .then((res) => res.json())
-      .then((data) => {
+      .then(res => res.json())
+      .then(data => {
         if (data.error) {
           setError(data.error);
           return;
@@ -180,44 +193,37 @@ function App() {
 
         setError(null);
 
-        // Append the guess into the correct mode bucket and get new length
-        setGuessesByMode((prev) => {
-          const updatedModeGuesses = [...(prev[mode] || []), data];
-          const newState = { ...prev, [mode]: updatedModeGuesses };
+        setGuessesByMode(prev => {
+          const updated = [...(prev[mode] || []), data];
 
-          // Persist happens via effect; now compute guessCount and call recordWin if correct
           if (data.is_correct) {
-            // recordWin expects number of guesses it took to win
-            const guessCount = updatedModeGuesses.length;
-            recordWin(guessCount);
+            recordWin(updated.length);
             setGameWon(true);
             setWinningPlayer(data.guess);
           }
 
-          return newState;
+          return { ...prev, [mode]: updated };
         });
 
-        // remove guessed player from autocomplete pool for current mode
-        setAllPlayers((prev) => prev.filter((p) => p.id !== data.guess.id));
+        setAllPlayers(prev =>
+          prev.filter(p => p.id !== data.guess.id)
+        );
 
-        // UI cleanup
         setFilteredPlayers([]);
         setGuess("");
       })
-      .catch((err) => {
-        console.error(err);
-        setError("Network error");
-      });
+      .catch(() => setError("Network error"));
   };
 
-  const normalizeText = (str = "") =>
-  str
-    .toLowerCase()
-    .normalize("NFD")              // split letters + accents
-    .replace(/[\u0300-\u036f]/g, ""); // remove accents
+  /* ----------------------------- Autocomplete ----------------------------- */
 
-  // Adjust list of players as user types
-  const handleInputChange = (e) => {
+  const normalizeText = (str = "") =>
+    str
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const handleInputChange = e => {
     const value = e.target.value;
     setGuess(value);
 
@@ -229,26 +235,27 @@ function App() {
     const search = normalizeText(value);
 
     const filtered = allPlayers
-      .filter(p => {
-        return (
+      .filter(
+        p =>
           normalizeText(p.name).includes(search) ||
           normalizeText(p.nationality).includes(search) ||
           normalizeText(p.team_name).includes(search)
-        );
-      })
+      )
       .slice(0, 30);
 
     setFilteredPlayers(filtered);
   };
 
-  const recordWin = (guessCount) => {
+  /* ------------------------------ Stats Logic ------------------------------- */
+
+  const recordWin = guessCount => {
     const today = getTodayUTC();
 
     setStats(prev => {
-      const s = prev[mode] || { ...DEFAULT_STATS }; // guard
+      const s = prev[mode] || { ...DEFAULT_STATS };
       const isNewDay = s.lastPlayedDate !== today;
 
-      const newCurrentStreak = isNewDay
+      const newStreak = isNewDay
         ? s.currentStreak + 1
         : s.currentStreak;
 
@@ -258,48 +265,32 @@ function App() {
           ...s,
           gamesPlayed: s.gamesPlayed + (isNewDay ? 1 : 0),
           gamesWon: s.gamesWon + (isNewDay ? 1 : 0),
-          totalGuessesInWins: s.totalGuessesInWins + (isNewDay ? guessCount : 0),
-          oneShots: s.oneShots + (isNewDay && guessCount === 1 ? 1 : 0),
-          currentStreak: newCurrentStreak,
-          maxStreak: Math.max(s.maxStreak, newCurrentStreak),
+          totalGuessesInWins:
+            s.totalGuessesInWins + (isNewDay ? guessCount : 0),
+          oneShots:
+            s.oneShots + (isNewDay && guessCount === 1 ? 1 : 0),
+          currentStreak: newStreak,
+          maxStreak: Math.max(s.maxStreak, newStreak),
           lastPlayedDate: today
         }
       };
     });
   };
 
-  const recordLoss = () => {
-    const today = getTodayUTC();
+  /* ----------------------------- Countdown Timer ----------------------------- */
 
-    setStats((prev) => {
-      const s = prev[mode] || { ...DEFAULT_STATS };
-      return {
-        ...prev,
-        [mode]: {
-          ...s,
-          gamesPlayed: s.gamesPlayed + 1,
-          currentStreak: 0,
-          lastPlayedDate: today
-        }
-      };
-    });
-  };
-
-
-
-  // Get time until midnight for next game (UTC)
   const getTimeUntilNextUTC = () => {
     const now = new Date();
-
     const nextUTC = new Date(
       Date.UTC(
         now.getUTCFullYear(),
         now.getUTCMonth(),
         now.getUTCDate() + 1,
-        0, 0, 0
+        0,
+        0,
+        0
       )
     );
-
     return nextUTC - now;
   };
 
@@ -307,14 +298,14 @@ function App() {
     const tick = () => {
       const diff = getTimeUntilNextUTC();
 
-      const hours = Math.floor(diff / 1000 / 60 / 60);
-      const minutes = Math.floor((diff / 1000 / 60) % 60);
+      const hours = Math.floor(diff / 3600000);
+      const minutes = Math.floor((diff / 60000) % 60);
       const seconds = Math.floor((diff / 1000) % 60);
 
       setTimeLeft(
         `${hours.toString().padStart(2, "0")}:` +
-        `${minutes.toString().padStart(2, "0")}:` +
-        `${seconds.toString().padStart(2, "0")}`
+          `${minutes.toString().padStart(2, "0")}:` +
+          `${seconds.toString().padStart(2, "0")}`
       );
     };
 
@@ -323,60 +314,65 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const COL_DELAY = 120;
+  /* ------------------------------ Visual Helpers ----------------------------- */
 
-  const renderArrow = (feedback) => {
+  const renderArrow = feedback => {
     if (feedback === "match") return "";
-
     if (feedback === "higher") return "↓";
     if (feedback === "lower") return "↑";
-
     if (feedback === "higher_far") return "↓↓";
     if (feedback === "lower_far") return "↑↑";
-
     return "";
   };
 
-  function getArrowClass(feedback) {
-    switch(feedback) {
+  const getArrowClass = feedback => {
+    switch (feedback) {
       case "match":
-        return "good";       
+        return "good";
       case "higher":
       case "lower":
-        return "warn";       
+        return "warn";
       case "higher_far":
       case "lower_far":
-        return "near";       
+        return "near";
       default:
-        return "bad";        
+        return "bad";
     }
-  }
-
-  const getHighlightVideo = (player) => {
-    if (!player) return null;
-
-    const countryVideos = HIGHLIGHT_VIDEOS[player.nationality];
-    if (!countryVideos) return null;
-
-    return countryVideos[player.sex] || null;
   };
 
-  // safe fallback if stats not present
-  const currentStats = (stats && stats[mode]) ? stats[mode] : { ...DEFAULT_STATS };
+  const getHighlightVideo = player => {
+    if (!player) return null;
+    const countryVideos = HIGHLIGHT_VIDEOS[player.nationality];
+    return countryVideos ? countryVideos[player.sex] : null;
+  };
+
+  /* ------------------------------ Derived Stats ------------------------------ */
+
+  const currentStats = stats?.[mode] || { ...DEFAULT_STATS };
 
   const winPercentage =
     currentStats.gamesPlayed > 0
-      ? Math.round((currentStats.gamesWon / currentStats.gamesPlayed) * 100)
+      ? Math.round(
+          (currentStats.gamesWon / currentStats.gamesPlayed) * 100
+        )
       : 0;
 
   const avgGuesses =
     currentStats.gamesWon > 0
-      ? (currentStats.totalGuessesInWins / currentStats.gamesWon).toFixed(2)
+      ? (
+          currentStats.totalGuessesInWins /
+          currentStats.gamesWon
+        ).toFixed(2)
       : "-";
 
-  const highlightVideoId = gameWon
-    ? getHighlightVideo(winningPlayer)
-    : null;
+  const highlightVideoId =
+    gameWon && winningPlayer
+      ? getHighlightVideo(winningPlayer)
+      : null;
+
+  /* -------------------------------------------------------------------------- */
+  /*                                   JSX                                      */
+  /* -------------------------------------------------------------------------- */
 
   return (
     <div className="app-bg">
