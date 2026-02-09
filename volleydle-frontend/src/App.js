@@ -715,9 +715,21 @@ function App() {
                 <p className="explore-team">Explore team {winningPlayer.team_name}</p>
               )}
 
-              {/* Video embed with clickable thumbnail */}
+              {/* Video embed with preloaded hidden iframe */}
               {highlightVideoId && (
-                <div className="video-container">
+                <div
+                  className="video-container"
+                  style={{
+                    width: "100%",
+                    height: 240,            // slightly taller for better view
+                    borderRadius: 8,
+                    marginTop: 12,
+                    backgroundColor: "#000",
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                >
+                  {/* Thumbnail overlay */}
                   {!isVideoPlaying && (
                     <div
                       onClick={() => setIsVideoPlaying(true)}
@@ -731,26 +743,29 @@ function App() {
                         backgroundSize: "cover",
                         backgroundPosition: "center",
                         cursor: "pointer",
+                        zIndex: 2,  // make sure it’s above iframe
                       }}
                     />
                   )}
 
-                  {isVideoPlaying && (
-                    <iframe
-                      src={`https://www.youtube.com/embed/${highlightVideoId}?autoplay=1`}
-                      title="Highlights"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        height: "100%",
-                        borderRadius: 8,
-                      }}
-                    />
-                  )}
+                  {/* Preloaded iframe, hidden until play */}
+                  <iframe
+                    src={`https://www.youtube.com/embed/${highlightVideoId}?autoplay=0&enablejsapi=1`}
+                    title="Highlights"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: 8,
+                      zIndex: 1,                  // behind thumbnail
+                      opacity: isVideoPlaying ? 1 : 0,  // show on click
+                      transition: "opacity 0.3s",
+                    }}
+                  />
                 </div>
               )}
 
