@@ -25,6 +25,7 @@ const DEFAULT_STATS = {
 function App() {
   const DEFAULT_PLAYER_IMAGE = "/default-player.png"; // /public fallback image
   const API_URL = process.env.REACT_APP_API_URL;
+  console.log("API URL:", API_URL);
 
   /* ---------------------------------- State --------------------------------- */
 
