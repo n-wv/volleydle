@@ -833,6 +833,9 @@ function App() {
                     overflow: "hidden",
                     backgroundColor: "#000",
                   }}
+                  onClick={() =>
+                    window.open(`https://www.youtube.com/watch?v=${highlightVideoId}`, "_blank")
+                  }
                 >
                   {/* iframe always present and visible (so YT won't block) */}
                   <iframe
