@@ -27,6 +27,10 @@ function App() {
   const API_URL = process.env.REACT_APP_API_URL;
   console.log("API URL:", API_URL);
 
+  useEffect(() => {
+    console.log("API URL:", process.env.REACT_APP_API_URL);
+  }, []);
+
   /* ---------------------------------- State --------------------------------- */
 
   const [guess, setGuess] = useState("");
