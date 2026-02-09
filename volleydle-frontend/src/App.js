@@ -3,7 +3,6 @@ import "./App.css";
 import React, { useEffect, useState } from "react";
 import { HIGHLIGHT_VIDEOS } from "./highlightVideos";
 
-
 /* -------------------------------------------------------------------------- */
 /*                                   Constants                                */
 /* -------------------------------------------------------------------------- */
@@ -24,12 +23,7 @@ const DEFAULT_STATS = {
 
 function App() {
   const DEFAULT_PLAYER_IMAGE = "/default-player.png"; // /public fallback image
-  const API_URL = process.env.REACT_APP_API_URL;
-  console.log("API URL:", API_URL);
-
-  useEffect(() => {
-    console.log("API URL:", process.env.REACT_APP_API_URL);
-  }, []);
+  const API_URL = process.env.REACT_APP_API_URL || ""; // fallback empty so URL building won't blow up
 
   /* ---------------------------------- State --------------------------------- */
 
@@ -49,6 +43,13 @@ function App() {
   const [timeLeft, setTimeLeft] = useState("");
 
   const [mode, setMode] = useState("men");
+
+  const [loadingPlayers, setLoadingPlayers] = useState(true); 
+  const [isSubmitting, setIsSubmitting] = useState(false); // prevents spam guesses
+  const [inputFocused, setInputFocused] = useState(false);
+
+  // crash handler modal
+  const [crashInfo, setCrashInfo] = useState(null);
 
   /* ---------------------------------- Utils --------------------------------- */
 
@@ -81,13 +82,15 @@ function App() {
       return { date: today, men: [], women: [] };
     }
 
-    const parsed = JSON.parse(saved);
-
-    if (parsed.date !== today) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.date !== today) {
+        return { date: today, men: [], women: [] };
+      }
+      return parsed;
+    } catch (e) {
       return { date: today, men: [], women: [] };
     }
-
-    return parsed;
   });
 
   /* ---------------------------- Daily Reset Logic ---------------------------- */
@@ -105,14 +108,41 @@ function App() {
         const didWinMen = yesterdayMen.some(g => g.is_correct);
         const didWinWomen = yesterdayWomen.some(g => g.is_correct);
 
+        // Increment gamesPlayed if there were any guesses yesterday
         setStats(prevStats => ({
           men: {
             ...prevStats.men,
-            currentStreak: didWinMen ? prevStats.men.currentStreak : 0
+            gamesPlayed:
+              prevStats.men.gamesPlayed +
+              (yesterdayMen.length > 0 ? 1 : 0),
+            currentStreak: didWinMen ? prevStats.men.currentStreak + 1 : 0,
+            maxStreak: didWinMen
+              ? Math.max(prevStats.men.maxStreak, prevStats.men.currentStreak + 1)
+              : prevStats.men.maxStreak,
+            totalGuessesInWins:
+              prevStats.men.totalGuessesInWins +
+              (didWinMen ? yesterdayMen.length : 0),
+            oneShots:
+              prevStats.men.oneShots +
+              (didWinMen && yesterdayMen.length === 1 ? 1 : 0),
+            lastPlayedDate: today
           },
           women: {
             ...prevStats.women,
-            currentStreak: didWinWomen ? prevStats.women.currentStreak : 0
+            gamesPlayed:
+              prevStats.women.gamesPlayed +
+              (yesterdayWomen.length > 0 ? 1 : 0),
+            currentStreak: didWinWomen ? prevStats.women.currentStreak + 1 : 0,
+            maxStreak: didWinWomen
+              ? Math.max(prevStats.women.maxStreak, prevStats.women.currentStreak + 1)
+              : prevStats.women.maxStreak,
+            totalGuessesInWins:
+              prevStats.women.totalGuessesInWins +
+              (didWinWomen ? yesterdayWomen.length : 0),
+            oneShots:
+              prevStats.women.oneShots +
+              (didWinWomen && yesterdayWomen.length === 1 ? 1 : 0),
+            lastPlayedDate: today
           }
         }));
 
@@ -135,10 +165,14 @@ function App() {
   /* ----------------------------- Persist Guesses ----------------------------- */
 
   useEffect(() => {
-    localStorage.setItem(
-      "volleydleGuesses",
-      JSON.stringify(guessesByMode)
-    );
+    try {
+      localStorage.setItem(
+        "volleydleGuesses",
+        JSON.stringify(guessesByMode)
+      );
+    } catch (e) {
+      console.error("Failed to persist guesses", e);
+    }
   }, [guessesByMode]);
 
   /* -------------------------- Restore Win Per Mode --------------------------- */
@@ -159,41 +193,87 @@ function App() {
   const currentGuesses = guessesByMode[mode] || [];
 
   /* ---------------------------- Fetch Player List ---------------------------- */
+  // improved with loading state & robust error handling
 
-  const fetchPlayersForMode = () => {
-    fetch(`${API_URL}/api/players?mode=${mode}`)
-      .then(res => res.json())
-      .then(data => {
-        const guessedIds = new Set(
-          (guessesByMode[mode] || []).map(g => g.guess.id)
-        );
+  const fetchPlayersForMode = async (signal) => {
+    setLoadingPlayers(true);
+    setError(null);
 
-        const remaining = data.filter(p => !guessedIds.has(p.id));
-        setAllPlayers(remaining);
-      })
-      .catch(err => console.error(err));
+    if (!API_URL) {
+      setError("API_URL is not configured.");
+      setLoadingPlayers(false);
+      setAllPlayers([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/players?mode=${mode}`, { signal });
+
+      // handle non-2xx or non-json gracefully
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Players fetch failed: ${res.status} ${res.statusText} ${text}`);
+      }
+
+      const data = await res.json().catch(() => {
+        throw new Error("Players endpoint did not return valid JSON");
+      });
+
+      if (!Array.isArray(data)) {
+        throw new Error("Players response is not an array");
+      }
+
+      const guessedIds = new Set(
+        (guessesByMode[mode] || []).map(g => g.guess.id)
+      );
+
+      const remaining = data.filter(p => !guessedIds.has(p.id));
+      setAllPlayers(remaining);
+    } catch (err) {
+      if (err.name === "AbortError") {
+        // request was aborted - normal during rapid mode changes
+        console.info("players fetch aborted");
+      } else {
+        console.error("fetchPlayersForMode error", err);
+        setError("Failed to load players. Try refreshing the page.");
+        setAllPlayers([]);
+      }
+    } finally {
+      setLoadingPlayers(false);
+    }
   };
 
   useEffect(() => {
+    // use AbortController to cancel previous fetch if mode toggles quickly
+    const ctrl = new AbortController();
     setGuess("");
     setFilteredPlayers([]);
     setError(null);
-    fetchPlayersForMode();
+    fetchPlayersForMode(ctrl.signal);
+    return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   /* ------------------------------ Guess Handling ----------------------------- */
 
   const handleGuess = () => {
-    if (!guess || gameWon) return;
+    if (!guess || gameWon || isSubmitting) return;
 
-    fetch(
-      `${API_URL}/api/guess?name=${encodeURIComponent(guess)}&mode=${mode}`
-    )
-      .then(res => res.json())
+    setIsSubmitting(true);
+    setError(null);
+
+    fetch(`${API_URL}/api/guess?name=${encodeURIComponent(guess)}&mode=${mode}`)
+      .then(res => {
+        if (!res.ok) throw res; // will catch 404, 500, etc
+        return res.json();
+      })
       .then(data => {
         if (data.error) {
-          setError(data.error);
+          if (data.error.includes("Player not found")) {
+            setError(`Player not found. Try another name.`);
+          } else {
+            setError(data.error);
+          }
           return;
         }
 
@@ -218,13 +298,24 @@ function App() {
         setFilteredPlayers([]);
         setGuess("");
       })
-      .catch(() => setError("Network error"));
+      .catch(async err => {
+        if (err.json) {
+          const e = await err.json();
+          if (e.error && e.error.includes("Player not found")) {
+            setError(`Player not found. Try another name.`);
+            return;
+          }
+        }
+        setError("Network error or server unavailable");
+      })
+      .finally(() => setIsSubmitting(false));
   };
 
   /* ----------------------------- Autocomplete ----------------------------- */
 
   const normalizeText = (str = "") =>
     str
+      .toString()
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
@@ -376,6 +467,38 @@ function App() {
       ? getHighlightVideo(winningPlayer)
       : null;
 
+  /* --------------------------- Global crash handlers ------------------------- */
+  useEffect(() => {
+    function onErrorHandler(msg, url, line, col, error) {
+      console.error("Global error caught:", { msg, url, line, col, error });
+      setCrashInfo({
+        message: msg?.toString() || "An error occurred",
+        url,
+        line,
+        col,
+        stack: error?.stack || null
+      });
+      return false; // allow default handling too
+    }
+
+    function onUnhandledRejection(e) {
+      console.error("Unhandled Rejection", e);
+      const reason = e?.reason || e;
+      setCrashInfo({
+        message: reason?.message || String(reason),
+        stack: reason?.stack || null
+      });
+    }
+
+    window.addEventListener("error", onErrorHandler);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", onErrorHandler);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
+
   /* -------------------------------------------------------------------------- */
   /*                                   JSX                                      */
   /* -------------------------------------------------------------------------- */
@@ -391,11 +514,13 @@ function App() {
         </div>
 
         {/* -------------------- Mode toggle + Info/Help buttons -------------------- */}
-        <div className="section-card mode-toggle-card" style={{ display: "flex", alignItems: "center", gap: "12px", justifyContent: "center" }}>
-          
+        <div
+          className="section-card mode-toggle-card"
+          style={{ display: "flex", alignItems: "center", gap: "12px", justifyContent: "center" }}
+        >
           {/* Info Button */}
           <button className="info-help-button" onClick={() => setShowInfo(true)}>i</button>
-          
+
           {/* Mode toggle */}
           <div className="mode-toggle">
             <button onClick={() => setMode("men")} disabled={mode === "men"}>Men's</button>
@@ -412,7 +537,7 @@ function App() {
             <div className="info-help-modal" onClick={(e) => e.stopPropagation()}>
               <h2>Info</h2>
               <p>Every day, try to guess the volleyball player of the day!</p>
-              <p>The game is based on player information the 2024 Olympics.</p>
+              <p>The game is based on player information from the 2024 Olympics.</p>
               <p>Contact: volleydlegame@gmail.com</p>
               <p className="countdown">Next player in: {timeLeft} (UTC)</p>
               <button className="close-modal" onClick={() => setShowInfo(false)}>Close</button>
@@ -432,7 +557,7 @@ function App() {
                 <li><strong>Yellow:</strong> Close Guess (for numbers)</li>
                 <li><strong>Orange:</strong> Far Guess (for numbers)</li>
                 <li><strong>Red:</strong> No match</li>
-                <li>Arrows indicate if the correct answer is above or below your guess, and the amount corresponds to if it is far or near</li>
+                <li>Arrows indicate if the correct answer is above or below your guess; double arrows = farther away</li>
               </ul>
               <p className="countdown">Next player in: {timeLeft} (UTC)</p>
               <button className="close-modal" onClick={() => setShowHelp(false)}>Close</button>
@@ -442,11 +567,31 @@ function App() {
 
         {/* Search & Guess */}
         <div className="section-card search-section">
-          <input type="text" value={guess} onChange={handleInputChange} placeholder="Search player or country..." />
+          <input
+            type="text"
+            value={guess}
+            onChange={handleInputChange}
+            placeholder="Search player or country..."
+            aria-label="Search player"
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+          />
+
+          {(inputFocused && loadingPlayers) && (
+            <div style={{ marginTop: 8, color: "#9bb7d6", fontStyle: "italic" }}>
+              Loading players…
+            </div>
+          )}
+
           {filteredPlayers.length > 0 && (
-            <ul className="autocomplete">
+            <ul className="autocomplete" role="listbox">
               {filteredPlayers.map(p => (
-                <li key={p.id} onClick={() => { setGuess(p.name); setFilteredPlayers([]); }}>
+                <li
+                  key={p.id}
+                  onClick={() => { setGuess(p.name); setFilteredPlayers([]); }}
+                  role="option"
+                  aria-selected={guess === p.name}
+                >
                   <img src={p.picture_url || DEFAULT_PLAYER_IMAGE} alt={p.name} />
                   <div>
                     <strong>{p.name}</strong>
@@ -456,8 +601,26 @@ function App() {
               ))}
             </ul>
           )}
-          <button className="guess-button" onClick={handleGuess} disabled={gameWon || !guess}>Guess</button>
-          {error && <p className="error">{error}</p>}
+
+          <button
+            className="guess-button"
+            onClick={handleGuess}
+            disabled={gameWon || !guess || isSubmitting}
+            aria-disabled={gameWon || !guess || isSubmitting}
+          >
+            {isSubmitting ? "Checking…" : "Guess"}
+          </button>
+
+          {error && (
+            <p
+              style={{
+                marginTop: 8,
+                color: "#658abe"
+              }}
+            >
+              {error}
+            </p>
+          )}
         </div>
 
         {/* Guess Table */}
@@ -526,20 +689,24 @@ function App() {
               <p>{winningPlayer.nationality} • {winningPlayer.position}</p>
 
               {/* Stats button */}
-              <button onClick={() => setShowStats(true)}>Stats</button>
+              <button onClick={() => setShowStats(true)} style={{ background: "#4da3ff", color: "#081a2d", marginTop: 8 }}>Stats</button>
 
               {/* Explore team text */}
               {winningPlayer.team_name && (
-                <p className="explore-team">Explore team {winningPlayer.team_name}</p>
+                <p className="explore-team" style={{ marginTop: 12 }}>Explore team {winningPlayer.team_name}</p>
               )}
 
               {/* Video embed */}
               {highlightVideoId && (
-                <iframe 
-                  src={`https://www.youtube.com/embed/${highlightVideoId}`} 
-                  title="Highlights" 
-                  allowFullScreen 
-                />
+                <>
+                  <div style={{ height: 12 }} />
+                  <iframe
+                    src={`https://www.youtube.com/embed/${highlightVideoId}`}
+                    title="Highlights"
+                    allowFullScreen
+                    style={{ width: "100%", height: 215, borderRadius: 8 }}
+                  />
+                </>
               )}
 
               <p className="countdown">Next player in {timeLeft} (UTC)</p>
@@ -564,10 +731,29 @@ function App() {
           </div>
         )}
 
+        {/* Crash Modal */}
+        {crashInfo && (
+          <div className="modal-overlay" onClick={() => setCrashInfo(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Something went wrong</h2>
+              <p style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{crashInfo.message}</p>
+              {crashInfo.stack && (
+                <details style={{ textAlign: "left", marginTop: 8 }}>
+                  <summary>Stack trace</summary>
+                  <pre style={{ fontSize: 11 }}>{crashInfo.stack}</pre>
+                </details>
+              )}
+              <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center" }}>
+                <button onClick={() => window.location.reload()}>Reload</button>
+                <button onClick={() => setCrashInfo(null)}>Dismiss</button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
-
 }
 
 export default App;

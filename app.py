@@ -52,8 +52,7 @@ COUNTRY_TO_FLAG = {
 app = Flask(__name__)
 CORS(app)
 
-CORS(app)
-#CORS(app, origins=["https://mango-plant-0c2fcb01e.4.azurestaticapps.net", "http://localhost:3000"])
+CORS(app, origins=["https://mango-plant-0c2fcb01e.4.azurestaticapps.net", "http://localhost:3000", "https://www.volleydle.com"])
 
 def get_db_connection():
     # load local cred.env if present (dev)
