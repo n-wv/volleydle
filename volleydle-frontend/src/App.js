@@ -537,7 +537,23 @@ function App() {
             <div className="info-help-modal" onClick={(e) => e.stopPropagation()}>
               <h2>Info</h2>
               <p>Every day, try to guess the volleyball player of the day!</p>
-              <p>The game is based on player information from the 2024 Olympics.</p>
+              <p>
+                The game is based on player information from the 2024 Olympics.
+                Player images and info are gathered from the
+                <a
+                  href="https://www.volleyballworld.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    marginLeft: '4px',
+                    color: '#94bceb',
+                    textDecoration: 'none',
+                  }}
+                >
+                  Volleyball World
+                </a>
+                {' '}website.
+              </p>
               <p>Contact: volleydlegame@gmail.com</p>
               <p className="countdown">Next player in: {timeLeft} (UTC)</p>
               <button className="close-modal" onClick={() => setShowInfo(false)}>Close</button>
@@ -718,10 +734,10 @@ function App() {
                   width: "100%",
                   borderRadius: 8,
                   marginTop: highlightVideoId ? 12 : 0,
-                  visibility: highlightVideoId ? "visible" : "hidden" // hide if no video
+                  backgroundColor: highlightVideoId ? "transparent" : "#000" // optional placeholder
                 }}
               >
-                {highlightVideoId && (
+                {highlightVideoId ? (
                   <iframe
                     src={`https://www.youtube.com/embed/${highlightVideoId}`}
                     title="Highlights"
@@ -732,7 +748,7 @@ function App() {
                       borderRadius: 8
                     }}
                   />
-                )}
+                ) : null}
               </div>
 
               <p className="countdown">Next player in {timeLeft} (UTC)</p>
