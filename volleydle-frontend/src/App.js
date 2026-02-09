@@ -49,6 +49,8 @@ function App() {
   const [inputFocused, setInputFocused] = useState(false);
 
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const playerRef = React.useRef(null);
+  const iframeIdRef = React.useRef(null);
   
   // crash handler modal
   const [crashInfo, setCrashInfo] = useState(null);
@@ -721,7 +723,7 @@ function App() {
                   className="video-container"
                   style={{
                     width: "100%",
-                    height: 240,
+                    height: 260,
                     borderRadius: 8,
                     marginTop: 12,
                     position: "relative",
@@ -729,9 +731,10 @@ function App() {
                     backgroundColor: "#000",
                   }}
                 >
-                  {/* Preloaded iframe always rendered */}
+                  {/* Always-rendered iframe with enablejsapi and origin */}
                   <iframe
-                    src={`https://www.youtube.com/embed/${highlightVideoId}?enablejsapi=1&rel=0`}
+                    id={iframeIdRef.current || `yt-player-${highlightVideoId}`}
+                    src={`https://www.youtube.com/embed/${highlightVideoId}?enablejsapi=1&rel=0&origin=${encodeURIComponent(window.location.origin)}`}
                     title="Highlights"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -741,15 +744,32 @@ function App() {
                       left: 0,
                       width: "100%",
                       height: "100%",
-                      borderRadius: 8,
+                      border: 0,
                       zIndex: 1,
                     }}
                   />
 
-                  {/* Thumbnail overlay */}
+                  {/* Thumbnail overlay - stays on top until we start playback */}
                   {!isVideoPlaying && (
                     <div
-                      onClick={() => setIsVideoPlaying(true)}
+                      className="video-thumbnail-overlay"
+                      onClick={async () => {
+                        try {
+                          // ensure player exists then start playback
+                          if (playerRef.current && typeof playerRef.current.playVideo === "function") {
+                            playerRef.current.playVideo();
+                            setIsVideoPlaying(true);
+                          } else {
+                            // In case player not yet ready, try to init then play once ready
+                            // player will be created by the useEffect below
+                            setIsVideoPlaying(true);
+                          }
+                        } catch (e) {
+                          console.error("Play attempt failed", e);
+                          // fallback: set isVideoPlaying true so iframe is visible and user can press play in the player
+                          setIsVideoPlaying(true);
+                        }
+                      }}
                       style={{
                         position: "absolute",
                         top: 0,
