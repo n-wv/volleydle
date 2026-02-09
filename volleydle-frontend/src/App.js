@@ -686,14 +686,14 @@ function App() {
             <div className="win-info">
               <h2>Today's player:</h2>
               <h3>{winningPlayer.flag} {winningPlayer.name}</h3>
-              <p>{winningPlayer.nationality} • {winningPlayer.position}</p>
+              <p>{winningPlayer.nationality} • {winningPlayer.position} • #{winningPlayer.jersey_number}</p>
 
               {/* Stats button */}
               <button onClick={() => setShowStats(true)} style={{ background: "#4da3ff", color: "#081a2d", marginTop: 8 }}>Stats</button>
 
               {/* Explore team text */}
               {winningPlayer.team_name && (
-                <p className="explore-team" style={{ marginTop: 12 }}>Explore team {winningPlayer.team_name}</p>
+                <p className="explore-team" style={{ marginTop: 12 }}>Explore team {winningPlayer.team_name}:</p>
               )}
 
               {/* Video embed */}
@@ -701,8 +701,9 @@ function App() {
                 <>
                   <div style={{ height: 12 }} />
                   <iframe
-                    src={`https://www.youtube.com/embed/${highlightVideoId}`}
+                    src={`https://www.youtube.com/embed/${highlightVideoId}?rel=0&modestbranding=1&playsinline=1`}
                     title="Highlights"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                     style={{ width: "100%", height: 215, borderRadius: 8 }}
                   />
