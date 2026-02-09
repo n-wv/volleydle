@@ -48,6 +48,8 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false); // prevents spam guesses
   const [inputFocused, setInputFocused] = useState(false);
 
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  
   // crash handler modal
   const [crashInfo, setCrashInfo] = useState(null);
 
@@ -698,58 +700,59 @@ function App() {
         {/* Win Card */}
         {gameWon && winningPlayer && (
           <div className="win-card">
-            <img
-              src={winningPlayer.picture_url || DEFAULT_PLAYER_IMAGE}
-              alt={winningPlayer.name}
-            />
+            <img src={winningPlayer.picture_url || DEFAULT_PLAYER_IMAGE} alt={winningPlayer.name} />
+
             <div className="win-info">
               <h2>Today's player:</h2>
-              <h3>
-                {winningPlayer.flag} {winningPlayer.name}
-              </h3>
-              <p>
-                {winningPlayer.nationality} • {winningPlayer.position} • #
-                {winningPlayer.jersey_number}
-              </p>
+              <h3>{winningPlayer.flag} {winningPlayer.name}</h3>
+              <p>{winningPlayer.nationality} • {winningPlayer.position} • #{winningPlayer.jersey_number}</p>
 
               {/* Stats button */}
-              <button
-                onClick={() => setShowStats(true)}
-                style={{ background: "#4da3ff", color: "#081a2d", marginTop: 8 }}
-              >
-                Stats
-              </button>
+              <button onClick={() => setShowStats(true)}>Stats</button>
 
               {/* Explore team text */}
               {winningPlayer.team_name && (
-                <p className="explore-team" style={{ marginTop: 12 }}>
-                  Explore team {winningPlayer.team_name}:
-                </p>
+                <p className="explore-team">Explore team {winningPlayer.team_name}</p>
               )}
 
-              {/* Video embed */}
-              <div
-                style={{
-                  height: 215,          // maintain card space
-                  width: "100%",
-                  borderRadius: 8,
-                  marginTop: highlightVideoId ? 12 : 0,
-                  backgroundColor: highlightVideoId ? "transparent" : "#000" // optional placeholder
-                }}
-              >
-                {highlightVideoId ? (
-                  <iframe
-                    src={`https://www.youtube.com/embed/${highlightVideoId}`}
-                    title="Highlights"
-                    allowFullScreen
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: 8
-                    }}
-                  />
-                ) : null}
-              </div>
+              {/* Video embed with clickable thumbnail */}
+              {highlightVideoId && (
+                <div className="video-container">
+                  {!isVideoPlaying && (
+                    <div
+                      onClick={() => setIsVideoPlaying(true)}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        backgroundImage: `url(https://img.youtube.com/vi/${highlightVideoId}/hqdefault.jpg)`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        cursor: "pointer",
+                      }}
+                    />
+                  )}
+
+                  {isVideoPlaying && (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${highlightVideoId}?autoplay=1`}
+                      title="Highlights"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 8,
+                      }}
+                    />
+                  )}
+                </div>
+              )}
 
               <p className="countdown">Next player in {timeLeft} (UTC)</p>
             </div>

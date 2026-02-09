@@ -378,9 +378,10 @@ td, th {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px; /* reduced gap */
-  max-width: 400px;
+  align-items: center; /* keeps avatar & text centered */
+  gap: 12px;
+  max-width: 400px;   /* slightly wider */
+  width: 90%;         /* responsive on mobile */
   margin: 0 auto;
   text-align: center;
 }
@@ -392,16 +393,21 @@ td, th {
   margin-bottom: 8px;
 }
 
+.win-info {
+  width: 100%;          /* ensure full width for video */
+  display: flex;
+  flex-direction: column;
+  align-items: center;  /* keep text/buttons centered */
+}
+
 .win-info h2 {
   font-size: 1.5rem;
-  margin: 0;
-  margin-bottom: 4px;
+  margin: 0 0 4px 0;
 }
 
 .win-info h3 {
   font-size: 1.2rem;
-  margin: 0;
-  margin-bottom: 8px;
+  margin: 0 0 8px 0;
 }
 
 .win-info button {
@@ -428,11 +434,29 @@ td, th {
   color: #cfe6ff;
 }
 
-.win-info iframe {
-  width: 100%;
-  height: 215px;
+/* -------------------- Video container -------------------- */
+.video-container {
+  width: 100%;           /* fill full width of win-info */
+  align-self: stretch;   /* ensures full width in flex */
+  height: 240px;         /* slightly taller for more presence */
   border-radius: 8px;
-  margin-top: 8px;
+  margin-top: 12px;
+  background-color: #000;
+  overflow: hidden;
+  position: relative;
+}
+
+.video-container iframe {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+/* Countdown timer */
+.win-info .countdown {
+  margin-top: 12px;
+  font-weight: bold;
+  color: #cfe6ff;
 }
 
 /* -------------------- Modal -------------------- */
