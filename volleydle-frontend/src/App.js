@@ -49,9 +49,10 @@ function App() {
   const [inputFocused, setInputFocused] = useState(false);
 
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const playerRef = React.useRef(null);
-  const iframeIdRef = React.useRef(null);
-  
+  const playerRef = React.useRef(null);        // YT Player instance
+  const playRequestedRef = React.useRef(false);// user clicked before player ready
+  const iframeIdRef = React.useRef(null);      // stable iframe id
+
   // crash handler modal
   const [crashInfo, setCrashInfo] = useState(null);
 
@@ -503,6 +504,108 @@ function App() {
     };
   }, []);
 
+  // ensures YT IFrame API is loaded and player is created/destroyed properly
+  useEffect(() => {
+  if (!highlightVideoId) return;
+
+  const iframeId = `yt-player-${highlightVideoId}`;
+  iframeIdRef.current = iframeId;
+
+  // load YT IFrame API if missing
+  function ensureYT() {
+    return new Promise((resolve, reject) => {
+      if (window.YT && window.YT.Player) return resolve(window.YT);
+
+      // attach callback if loaded externally
+      const oldCb = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        if (typeof oldCb === "function") oldCb();
+        resolve(window.YT);
+      };
+
+      if (!document.getElementById("youtube-iframe-api")) {
+        const tag = document.createElement("script");
+        tag.id = "youtube-iframe-api";
+        tag.src = "https://www.youtube.com/iframe_api";
+        tag.async = true;
+        tag.onerror = () => reject(new Error("YT API load failed"));
+        document.body.appendChild(tag);
+      }
+    });
+  }
+
+  let mounted = true;
+
+  ensureYT()
+    .then((YT) => {
+      if (!mounted) return;
+      // try to create player; iframe element may take a tick to exist in DOM so poll briefly
+      const createWhenReady = () => {
+        const el = document.getElementById(iframeId);
+        if (!el) {
+          // try again a few times
+          setTimeout(createWhenReady, 100);
+          return;
+        }
+
+        // only create once
+        if (playerRef.current) {
+          return;
+        }
+
+        playerRef.current = new YT.Player(iframeId, {
+          playerVars: {
+            autoplay: 0,
+            rel: 0,
+            origin: window.location.origin,
+            modestbranding: 1,
+          },
+          events: {
+            onReady: (e) => {
+              console.info("YT player ready");
+              // if user already clicked, play now
+              if (playRequestedRef.current) {
+                try {
+                  e.target.playVideo();
+                  playRequestedRef.current = false;
+                } catch (err) {
+                  console.warn("playVideo failed in onReady", err);
+                }
+              }
+            },
+            onError: (ev) => {
+              console.error("YT player error", ev);
+            },
+            onStateChange: (ev) => {
+              // optional: debug states
+              // ev.data === YT.PlayerState.PLAYING etc.
+            }
+          }
+        });
+      };
+
+      createWhenReady();
+    })
+    .catch((err) => {
+      console.error("Failed to load YouTube API", err);
+    });
+
+  return () => {
+    mounted = false;
+    // destroy player on unmount / highlightVideoId change
+    try {
+      if (playerRef.current && typeof playerRef.current.destroy === "function") {
+        playerRef.current.destroy();
+      }
+    } catch (e) {
+      console.warn("error destroying player", e);
+    }
+    playerRef.current = null;
+    playRequestedRef.current = false;
+  };
+  // re-run when video id changes
+}, [highlightVideoId]);
+
   /* -------------------------------------------------------------------------- */
   /*                                   JSX                                      */
   /* -------------------------------------------------------------------------- */
@@ -731,10 +834,12 @@ function App() {
                     backgroundColor: "#000",
                   }}
                 >
-                  {/* Always-rendered iframe with enablejsapi and origin */}
+                  {/* iframe always present and visible (so YT won't block) */}
                   <iframe
                     id={iframeIdRef.current || `yt-player-${highlightVideoId}`}
-                    src={`https://www.youtube.com/embed/${highlightVideoId}?enablejsapi=1&rel=0&origin=${encodeURIComponent(window.location.origin)}`}
+                    src={`https://www.youtube.com/embed/${highlightVideoId}?enablejsapi=1&rel=0&origin=${encodeURIComponent(
+                      window.location.origin
+                    )}`}
                     title="Highlights"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -749,24 +854,36 @@ function App() {
                     }}
                   />
 
-                  {/* Thumbnail overlay - stays on top until we start playback */}
+                  {/* thumbnail overlay (on top) */}
                   {!isVideoPlaying && (
                     <div
                       className="video-thumbnail-overlay"
-                      onClick={async () => {
-                        try {
-                          // ensure player exists then start playback
-                          if (playerRef.current && typeof playerRef.current.playVideo === "function") {
+                      onClick={() => {
+                        // if player exists, ask it to play; otherwise mark requested and flip flag
+                        if (playerRef.current && typeof playerRef.current.playVideo === "function") {
+                          try {
                             playerRef.current.playVideo();
                             setIsVideoPlaying(true);
-                          } else {
-                            // In case player not yet ready, try to init then play once ready
-                            // player will be created by the useEffect below
+                          } catch (err) {
+                            console.warn("playerRef.playVideo failed, falling back:", err);
+                            // fallback: set play requested, reveal iframe (user can click inner player)
+                            playRequestedRef.current = true;
                             setIsVideoPlaying(true);
+                            // As last-resort: force autoplay param on iframe
+                            const node = document.getElementById(iframeIdRef.current);
+                            if (node) {
+                              const src = node.getAttribute("src") || "";
+                              if (!src.includes("autoplay=1")) {
+                                node.setAttribute(
+                                  "src",
+                                  src + (src.includes("?") ? "&" : "?") + "autoplay=1"
+                                );
+                              }
+                            }
                           }
-                        } catch (e) {
-                          console.error("Play attempt failed", e);
-                          // fallback: set isVideoPlaying true so iframe is visible and user can press play in the player
+                        } else {
+                          // player not ready yet: remember click intent
+                          playRequestedRef.current = true;
                           setIsVideoPlaying(true);
                         }
                       }}
